@@ -12,8 +12,10 @@ app.post("/webhook", async (req, res) => {
 
     console.log("🎧 Получено аудио:", audio_url);
 
+    // Скачиваем аудио из Zoom/Recall
     const audio = await fetch(audio_url).then((r) => r.arrayBuffer());
 
+    // Подключаемся к GPT-5 Realtime
     const ws = new WebSocket(
       "wss://api.openai.com/v1/realtime?model=gpt-5-realtime",
       {
@@ -21,9 +23,11 @@ app.post("/webhook", async (req, res) => {
       }
     );
 
+    // Когда соединение открыто
     ws.on("open", () => {
       console.log("🧠 GPT-5 подключен");
 
+      // Настраиваем голос, язык и поведение Асель
       ws.send(
         JSON.stringify({
           type: "session.update",
@@ -39,14 +43,20 @@ app.post("/webhook", async (req, res) => {
         })
       );
 
+      // Отправляем аудио в GPT-5
       ws.send(audio);
     });
 
+    // Ответы GPT-5 (аудио или текст)
     ws.on("message", async (data) => {
       try {
         const msg = JSON.parse(data.toString());
+
+        // ⚡ Новый блок: логируем и пересылаем аудио обратно в Recall
         if (msg.type === "partial_audio" && msg.audio) {
-          await fetch(
+          console.log("🎤 Получен аудио-фрагмент от GPT-5 (" + msg.audio.length + " байт)");
+
+          const res = await fetch(
             `https://api.recall.ai/v1/meeting-bots/${process.env.BOT_ID}/speak`,
             {
               method: "POST",
@@ -57,12 +67,15 @@ app.post("/webhook", async (req, res) => {
               body: Buffer.from(msg.audio, "base64"),
             }
           );
+
+          console.log("📡 Ответ Recall:", res.status, await res.text());
         }
       } catch (err) {
         console.error("Ошибка при обработке ответа GPT:", err);
       }
     });
 
+    // Ловим ошибки WebSocket
     ws.on("error", (err) => console.error("Ошибка WS:", err));
 
     res.sendStatus(200);
@@ -72,6 +85,7 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
+// Проверка доступности
 app.get("/", (_, res) => res.send("Асель онлайн 🚀"));
 
 app.listen(10000, () => console.log("Асель слушает Zoom 🎧"));
